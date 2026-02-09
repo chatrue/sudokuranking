@@ -76,7 +76,7 @@ export const STR = {
     waitingTitle: "기다리는 방",
     brand: "SuDoKu ranking",
     id: "아이디",
-    ranking 1: "랭킹 1위",
+    ranking: "랭킹 1위",
     settings: "설정",
     score: "점수",
     difficulty: "난이도",
