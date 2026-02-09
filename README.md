@@ -7,6 +7,7 @@
 ## 1) Supabase 설정
 1. Supabase 프로젝트 생성
 2. SQL Editor에서 `supabase.sql` 실행
+   - (단체게임/함께 즐기기 사용 시) `supabase/rooms_schema.sql`도 실행
 3. Project Settings → API 에서
    - Project URL
    - anon public key

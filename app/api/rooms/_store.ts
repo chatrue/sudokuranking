@@ -1,4 +1,12 @@
 // app/api/rooms/_store.ts
+// ✅ Vercel(서버리스) 환경에서는 "메모리(Map)" 저장이 요청마다 사라질 수 있어
+// 단체게임(rooms)이 간헐적으로 실패합니다(제출 실패/방장 참여 오류/게임 종료 안 됨).
+//
+// 이 파일은 rooms 상태를 Supabase(DB)에 JSON으로 저장하도록 변경했습니다.
+// - 테이블 생성 SQL: /supabase/rooms_schema.sql
+// - 필요 환경변수: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+
+import { supabaseServer } from "@/lib/supabaseServer";
 import { pickPuzzle } from "@/lib/sudoku";
 import type { Difficulty } from "@/lib/settings";
 
@@ -45,6 +53,8 @@ export type Room = {
   results: RoomResult[];
 };
 
+const TABLE = "room_states";
+
 function randId(n: number) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let s = "";
@@ -57,61 +67,75 @@ function randToken(n: number) {
   for (let i = 0; i < n; i++) s += chars[Math.floor(Math.random() * chars.length)];
   return s;
 }
-
 function now() {
   return Date.now();
 }
 
-function getStore(): Map<string, Room> {
-  const g: any = globalThis as any;
-  if (!g.__SUDOKU_ROOMS__) g.__SUDOKU_ROOMS__ = new Map<string, Room>();
-  return g.__SUDOKU_ROOMS__ as Map<string, Room>;
-}
+/**
+ * DB에서 Room JSON을 로드합니다.
+ * - expiresAt이 지난 방은 자동 삭제 후 null 반환
+ */
+export async function getRoom(id: string): Promise<Room | null> {
+  const { data, error } = await supabaseServer.from(TABLE).select("state").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  const room = (data?.state as Room | null) ?? null;
+  if (!room) return null;
 
-export function cleanup() {
-  const store = getStore();
-  const t = now();
-  for (const [id, room] of store.entries()) {
-    if (room.expiresAt <= t) store.delete(id);
+  if (typeof room.expiresAt === "number" && room.expiresAt <= now()) {
+    // 만료 방 자동 정리
+    await supabaseServer.from(TABLE).delete().eq("id", id);
+    return null;
   }
+  return room;
 }
 
-export function createRoom(): { room: Room } {
-  cleanup();
-  const id = randId(6);
-  const hostToken = randToken(32);
-  const pin = String(Math.floor(100000 + Math.random() * 900000));
-  const createdAt = now();
-  const expiresAt = createdAt + 3 * 60 * 60 * 1000;
-
-  const room: Room = {
-    id,
-    hostToken,
-    pin,
-    status: "lobby",
-    createdAt,
-    expiresAt,
-    config: {
-      difficulty: "easy",
-      // QR 로비(함께 즐기기) 기본 옵션: 같은 숫자 보임/완성 숫자 표시 = 켬
-      highlightSameNumbers: true,
-      showCompletedNumbers: true,
-    },
-    members: [],
-    puzzleId: null,
-    puzzleData: null,
-    startedAt: null,
-    endedAt: null,
-    results: [],
-  };
-
-  getStore().set(id, room);
-  return { room };
+export async function saveRoom(room: Room): Promise<void> {
+  const { error } = await supabaseServer
+    .from(TABLE)
+    .update({ state: room, updated_at: new Date().toISOString() })
+    .eq("id", room.id);
+  if (error) throw new Error(error.message);
 }
 
-export function getRoom(id: string): Room | null {
-  cleanup();
-  return getStore().get(id) ?? null;
+export async function createRoom(): Promise<{ room: Room }> {
+  // 중복 방지 위해 몇 번 재시도
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const id = randId(6);
+    const hostToken = randToken(32);
+    const pin = String(Math.floor(100000 + Math.random() * 900000));
+    const createdAt = now();
+    const expiresAt = createdAt + 3 * 60 * 60 * 1000;
+
+    const room: Room = {
+      id,
+      hostToken,
+      pin,
+      status: "lobby",
+      createdAt,
+      expiresAt,
+      config: {
+        difficulty: "easy",
+        // QR 로비(함께 즐기기) 기본 옵션: 같은 숫자 보임/완성 숫자 표시 = 켬
+        highlightSameNumbers: true,
+        showCompletedNumbers: true,
+      },
+      members: [],
+      puzzleId: null,
+      puzzleData: null,
+      startedAt: null,
+      endedAt: null,
+      results: [],
+    };
+
+    const { error } = await supabaseServer.from(TABLE).insert({ id, state: room });
+    if (!error) return { room };
+
+    // id 충돌이면 재시도, 그 외면 에러
+    if (!String(error.message).toLowerCase().includes("duplicate")) {
+      throw new Error(error.message);
+    }
+  }
+  throw new Error("create_room_failed");
 }
 
 export function requireHost(room: Room, token: string | null) {
@@ -193,7 +217,6 @@ export function getPublicState(room: Room) {
     pinHint: room.pin.slice(0, 2) + "••••",
   };
 }
-
 
 export function resetRoom(room: Room) {
   // Allow starting a new match in the same room.

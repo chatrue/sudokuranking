@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { getRoom, joinRoom } from "../../_store";
+import { getRoom, joinRoom, saveRoom } from "../../_store";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request, ctx: { params: Promise<{ roomId: string }> }) {
   const { roomId } = await ctx.params;
-  const room = getRoom(roomId);
+  const room = await getRoom(roomId);
   if (!room) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
 
   const body = await req.json().catch(() => null);
@@ -15,6 +15,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ roomId: string
 
   try {
     const member = joinRoom(room, nickname, affiliation, pin);
+    await saveRoom(room);
     return NextResponse.json({ ok: true, memberId: member.id });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message ?? "join_failed" }, { status: 400 });
