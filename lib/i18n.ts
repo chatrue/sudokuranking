@@ -184,7 +184,7 @@ export const STR = {
     waitingTitle: "Waiting room",
     brand: "SuDoKu ranking",
     id: "ID",
-    ranking: "Ranking 1",
+    ranking: "Ranking 1st",
     settings: "Settings",
     score: "Score",
     difficulty: "Difficulty",
