@@ -684,7 +684,7 @@ export default function Page() {
             <button className="pillBtn" onClick={() => openRankings()} aria-label={t.ranking}>
               <div className="pillLeft">
                 <div className="pillTitle">{t.ranking}</div>
-                <div className="pillValue">{top1Row ? `${t.rank1} ${top1Row.player_id}${top1Row.country ? ` - ${top1Row.country}` : ""}` : "—"}</div>
+                <div className="pillValue">{top1Row ? `${top1Row.player_id}${top1Row.country ? ` - ${top1Row.country}` : ""}` : "—"}</div>
               </div>
               <div style={{ color: "var(--muted)" }}>›</div>
             </button>
