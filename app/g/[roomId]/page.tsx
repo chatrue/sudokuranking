@@ -250,7 +250,7 @@ useEffect(() => {
   return () => window.clearInterval(id);
 }, [state?.startedAt]);
 
-    const startedAtMs = useMemo(() => {
+      const startedAtMs = useMemo(() => {
     const v: any = state?.startedAt;
     if (!v) return null;
 
@@ -262,12 +262,13 @@ useEffect(() => {
     return Number.isFinite(t) ? t : null;
   }, [state?.startedAt]);
 
-const elapsedSec = useMemo(() => {
-  if (!state?.startedAt) return 0;
-  // tick이 1초마다 바뀌면서 elapsedSec도 1초마다 갱신됨
-  const _ = tick;
-  return Math.max(0, Math.floor((Date.now() - state.startedAt) / 1000));
-}, [state?.startedAt, tick]);
+  const elapsedSec = useMemo(() => {
+    if (!startedAtMs) return 0;
+    // tick이 1초마다 바뀌면서 elapsedSec도 1초마다 갱신됨
+    const _ = tick;
+    return Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
+  }, [startedAtMs, tick]);
+
 
   const isSolved = useMemo(() => {
     if (cells.length !== 81) return false;
