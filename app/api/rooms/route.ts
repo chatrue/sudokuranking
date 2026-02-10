@@ -4,6 +4,9 @@ import { createRoom } from "./_store";
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  const { room } = createRoom();
-  return NextResponse.json({ ok: true, roomId: room.id, hostToken: room.hostToken, pin: room.pin });
+  const { room } = await createRoom();
+  return NextResponse.json(
+    { ok: true, roomId: room.id, hostToken: room.hostToken, pin: room.pin },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }
