@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
-import { STR } from "@/lib/i18n";
 import { DEFAULT_SETTINGS, loadSettings, type Difficulty } from "@/lib/settings";
 import { puzzleToCells, type Cell, anyConflict, getSameNumberIndexes, countNumber } from "@/lib/sudoku";
 import { computeScore } from "@/lib/scoring";
@@ -36,7 +35,6 @@ export default function GroupRoomPage() {
   const isHostQuery = (searchParams?.get("host") ?? "") === "1";
 
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const t = STR[settings.lang];
 
   const [loading, setLoading] = useState(true);
   const [state, setState] = useState<PublicState | null>(null);
@@ -72,7 +70,6 @@ export default function GroupRoomPage() {
 
   const isHostEffective = useMemo(() => {
     if (!isHostQuery) return false;
-    // hostToken이 없으면 host로 간주하지 않음(안전)
     return true;
   }, [isHostQuery]);
 
@@ -116,6 +113,7 @@ export default function GroupRoomPage() {
     if (!isHostEffective) return;
     const ok = window.confirm(settings.lang === "ko" ? "정말로 방을 끝낼까요? (모두 종료됩니다)" : "End this room for everyone?");
     if (!ok) return;
+
     try {
       const tok = localStorage.getItem(`sudoku_host_${roomId}`) || hostToken || "";
       await fetch(`/api/rooms/${roomId}/end`, {
@@ -123,11 +121,13 @@ export default function GroupRoomPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ hostToken: tok }),
       });
+
       try {
         localStorage.removeItem(`sudoku_host_${roomId}`);
         localStorage.removeItem(`sudoku_pin_${roomId}`);
         localStorage.removeItem(`sudoku_member_${roomId}`);
       } catch {}
+
       router.push("/");
     } catch {
       showToast(settings.lang === "ko" ? "끝내기 실패" : "End failed");
@@ -168,7 +168,6 @@ export default function GroupRoomPage() {
     if (state.status !== "lobby") return;
     if (memberId) return;
 
-    // 로컬에 이미 memberId가 저장되어 있다면 우선 복원
     if (typeof window !== "undefined") {
       try {
         const savedMember = localStorage.getItem(`sudoku_member_${roomId}`);
@@ -199,15 +198,16 @@ export default function GroupRoomPage() {
     }
 
     if (state.status === "running") {
-      // 로비 -> 러닝 때 퍼즐 로드
       if (cells.length !== 81) {
-        loadPuzzle().catch(() => showToast(t.loadPuzzleFail));
+        loadPuzzle().catch(() =>
+          showToast(settings.lang === "ko" ? "퍼즐 불러오기 실패" : "Failed to load puzzle")
+        );
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.status]);
 
-  // ✅ running으로 전환됐는데 startedAt이 아직 없으면(지연/버그 대비) 로컬로 즉시 시작
+  // ✅ running으로 전환됐는데 startedAt이 아직 없으면 로컬로 즉시 시작
   useEffect(() => {
     if (state?.status !== "running") return;
     if (state?.startedAt) return;
@@ -225,17 +225,14 @@ export default function GroupRoomPage() {
     const v: any = state?.startedAt ?? localStartedAt;
     if (!v) return null;
 
-    // number(ms)로 오면 그대로
     if (typeof v === "number" && Number.isFinite(v)) return v;
 
-    // string/Date로 오면 ms로 변환
     const tt = new Date(v).getTime();
     return Number.isFinite(tt) ? tt : null;
   }, [state?.startedAt, localStartedAt]);
 
   const elapsedSec = useMemo(() => {
-    // tick이 1초마다 바뀌면서 elapsedSec도 1초마다 갱신됨
-    const _ = tick;
+    const _ = tick; // tick 변화로 1초마다 재계산
     if (!startedAtMs) return 0;
     return Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
   }, [startedAtMs, tick]);
@@ -470,7 +467,9 @@ export default function GroupRoomPage() {
             </button>
           </div>
 
-          <div style={{ padding: "14px 14px 8px", fontWeight: 700, fontSize: 14 }}>{settings.lang === "ko" ? "결과" : "Results"}</div>
+          <div style={{ padding: "14px 14px 8px", fontWeight: 700, fontSize: 14 }}>
+            {settings.lang === "ko" ? "결과" : "Results"}
+          </div>
 
           <div style={{ padding: "0 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
             {resultsSorted.length ? (
@@ -481,7 +480,8 @@ export default function GroupRoomPage() {
                   </div>
                   <div className="rowMeta">{r.affiliation || "-"}</div>
                   <div className="rowMeta">
-                    {settings.lang === "ko" ? "점수" : "Score"}: {r.score} · {settings.lang === "ko" ? "시간" : "Time"}: {formatTime(Math.floor((r.timeMs ?? 0) / 1000))}
+                    {(settings.lang === "ko" ? "점수" : "Score")}: {r.score} ·{" "}
+                    {(settings.lang === "ko" ? "시간" : "Time")}: {formatTime(Math.floor((r.timeMs ?? 0) / 1000))}
                   </div>
                 </div>
               ))
@@ -525,12 +525,7 @@ export default function GroupRoomPage() {
 
           {!memberId ? (
             <div style={{ padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
-              <input
-                className="input"
-                placeholder={settings.lang === "ko" ? "PIN" : "PIN"}
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-              />
+              <input className="input" placeholder="PIN" value={pin} onChange={(e) => setPin(e.target.value)} />
               <input
                 className="input"
                 placeholder={settings.lang === "ko" ? "닉네임" : "Nickname"}
@@ -586,10 +581,12 @@ export default function GroupRoomPage() {
               </button>
             </div>
           ) : null}
+
           <div className="blinkSoft" style={{ marginTop: 14, fontSize: 13, color: "var(--muted)", textAlign: "center" }}>
-            {t.waiting}
+            {settings.lang === "ko" ? "대기 중..." : "Waiting..."}
           </div>
         </div>
+
         <Toast message={toast} />
       </div>
     );
@@ -645,22 +642,22 @@ export default function GroupRoomPage() {
               </button>
             ))}
             <button className="numBtn" onClick={erase}>
-              {t.erase}
+              {settings.lang === "ko" ? "지우기" : "Erase"}
             </button>
           </div>
 
           <div className="toolRow">
             <button className={"toolBtn" + (memoMode ? " on" : "")} onClick={() => setMemoMode((v) => !v)}>
-              {t.memo}
+              {settings.lang === "ko" ? "메모" : "Memo"}
             </button>
             <button className="toolBtn" onClick={undo} disabled={!undoStack.length}>
-              {t.undo}
+              {settings.lang === "ko" ? "되돌리기" : "Undo"}
             </button>
             <button className="toolBtn" onClick={redo} disabled={!redoStack.length}>
-              {t.redo}
+              {settings.lang === "ko" ? "다시하기" : "Redo"}
             </button>
             <button className="toolBtn" onClick={openAdmin}>
-              {t.manage}
+              {settings.lang === "ko" ? "관리" : "Manage"}
             </button>
           </div>
         </div>
@@ -671,7 +668,7 @@ export default function GroupRoomPage() {
           </div>
 
           <button className="submitBtn" disabled={!isSolved || submitted} onClick={submitResult}>
-            {submitted ? (settings.lang === "ko" ? "제출 완료" : "Submitted") : t.submit}
+            {submitted ? (settings.lang === "ko" ? "제출 완료" : "Submitted") : settings.lang === "ko" ? "제출" : "Submit"}
           </button>
 
           {submitted ? (
@@ -684,7 +681,7 @@ export default function GroupRoomPage() {
         {adminOpen ? (
           <div className="modalOverlay" onClick={() => setAdminOpen(false)}>
             <div className="modal" onClick={(e) => e.stopPropagation()}>
-              <div style={{ fontWeight: 800, marginBottom: 12 }}>{t.manage}</div>
+              <div style={{ fontWeight: 800, marginBottom: 12 }}>{settings.lang === "ko" ? "관리" : "Manage"}</div>
 
               {isHostEffective ? (
                 <>
@@ -703,7 +700,7 @@ export default function GroupRoomPage() {
               )}
 
               <button className="ghostBtn" style={{ marginTop: 12, width: "100%" }} onClick={() => setAdminOpen(false)}>
-                {t.close}
+                {settings.lang === "ko" ? "닫기" : "Close"}
               </button>
             </div>
           </div>
