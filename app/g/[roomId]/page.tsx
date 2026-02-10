@@ -67,6 +67,7 @@ export default function GroupRoomPage() {
   const [memoMode, setMemoMode] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [tick, setTick] = useState(0);
+  const [localStartedAt, setLocalStartedAt] = useState<number | null>(null);
 
   const [undoStack, setUndoStack] = useState<Cell[][]>([]);
   const [redoStack, setRedoStack] = useState<Cell[][]>([]);
@@ -225,7 +226,9 @@ export default function GroupRoomPage() {
       setSelected(0);
       setMemoMode(false);
       setTick(0);
+      setLocalStartedAt(null);
     }
+    
     if (state.status === "ended") {
       setCells([]);
       setUndoStack([]);
@@ -243,24 +246,27 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.status]);
 
-// ✅ startedAt이 존재하는 순간부터(로비/러닝 상관없이) 1초 tick을 돌려서 시간 표시가 움직이게 함
+// ✅ 서버 startedAt이 늦게 오거나 null이어도 "로컬 startedAt"로 즉시 타이머가 움직이게 함
 useEffect(() => {
-  if (!state?.startedAt) return;
-  const id = window.setInterval(() => setTick((v) => v + 1), 1000);
+  const v = state?.startedAt ?? localStartedAt;
+  if (!v) return;
+
+  const id = window.setInterval(() => setTick((x) => x + 1), 1000);
   return () => window.clearInterval(id);
-}, [state?.startedAt]);
+}, [state?.startedAt, localStartedAt]);
 
       const startedAtMs = useMemo(() => {
-    const v: any = state?.startedAt;
-    if (!v) return null;
+  const v: any = state?.startedAt ?? localStartedAt;
+  if (!v) return null;
 
-    // number(ms)로 오면 그대로
-    if (typeof v === "number" && Number.isFinite(v)) return v;
+  // number(ms)로 오면 그대로
+  if (typeof v === "number" && Number.isFinite(v)) return v;
 
-    // string/Date로 오면 ms로 변환
-    const t = new Date(v).getTime();
-    return Number.isFinite(t) ? t : null;
-  }, [state?.startedAt]);
+  // string/Date로 오면 ms로 변환
+  const t = new Date(v).getTime();
+  return Number.isFinite(t) ? t : null;
+}, [state?.startedAt, localStartedAt]);
+
 
   const elapsedSec = useMemo(() => {
     if (!startedAtMs) return 0;
@@ -431,19 +437,23 @@ useEffect(() => {
     }
   }
 
-  async function hostStart() {
-    if (!isHostEffective || !hostToken) return;
-    try {
-      await fetch(`/api/rooms/${roomId}/start`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ hostToken }),
-      });
-      await fetchState();
-    } catch {
-      showToast(settings.lang === "ko" ? "시작 실패" : "Start failed");
-    }
+async function hostStart() {
+  if (!isHostEffective || !hostToken) return;
+  try {
+    await fetch(`/api/rooms/${roomId}/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ hostToken }),
+    });
+
+    setLocalStartedAt(Date.now()); // ✅ 즉시 타이머 시작
+    setTick(0);
+
+    await fetchState();
+  } catch {
+    showToast(settings.lang === "ko" ? "시작 실패" : "Start failed");
   }
+}
 
   async function hostReset() {
     if (!isHostEffective) return;
