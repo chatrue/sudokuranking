@@ -11,8 +11,15 @@ function pickString(v: any): string {
   return "";
 }
 
-export async function POST(req: Request, ctx: { params: { roomId: string } }) {
-  const { roomId } = ctx.params;
+export async function POST(req: Request, context: any) {
+  const roomId = pickString(context?.params?.roomId);
+
+  if (!roomId) {
+    return NextResponse.json(
+      { ok: false, error: "bad_room_id" },
+      { status: 400, headers: { "Cache-Control": "no-store" } }
+    );
+  }
 
   const body = await req.json().catch(() => ({} as any));
 
@@ -48,7 +55,6 @@ export async function POST(req: Request, ctx: { params: { roomId: string } }) {
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (e: any) {
-    // ✅ 디버깅에 유용하게 error를 그대로 내려줌 (클라이언트는 여전히 "참가실패"로 보여줄 수 있음)
     return NextResponse.json(
       { ok: false, error: e?.message ?? "join_failed" },
       { status: 400, headers: { "Cache-Control": "no-store" } }
