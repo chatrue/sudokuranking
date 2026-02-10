@@ -52,6 +52,7 @@ function randId(n: number) {
   for (let i = 0; i < n; i++) s += chars[Math.floor(Math.random() * chars.length)];
   return s;
 }
+
 function randToken(n: number) {
   const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let s = "";
@@ -229,11 +230,7 @@ export async function updateConfig(roomId: string, hostToken: string, patch: Par
 
   const next: RoomConfig = { ...room.config, ...patch };
 
-  const { error } = await supabaseServer
-    .from("game_rooms")
-    .update({ config: next })
-    .eq("id", roomId);
-
+  const { error } = await supabaseServer.from("game_rooms").update({ config: next }).eq("id", roomId);
   if (error) throw new Error(error.message);
 
   return await getRoom(roomId);
@@ -246,14 +243,7 @@ export async function startRoom(roomId: string, hostToken: string) {
 
   if (room.status !== "lobby") throw new Error("already_started");
 
-  export async function startRoom(roomId: string, hostToken: string) {
-  const room = await getRoom(roomId);
-  if (!room) throw new Error("not_found");
-  requireHost(room, hostToken);
-
-  if (room.status !== "lobby") throw new Error("already_started");
-
-  // ✅ pickPuzzle은 Puzzle 객체 자체를 반환함 (id, difficulty, grid, solution)
+  // ✅ pickPuzzle은 Puzzle 객체 자체를 반환 (id, difficulty, grid, solution)
   const p = pickPuzzle(room.config.difficulty);
 
   const startedAtIso = new Date().toISOString();
@@ -263,26 +253,7 @@ export async function startRoom(roomId: string, hostToken: string) {
     .update({
       status: "running",
       puzzle_id: p.id,
-      puzzle_data: p, // ✅ 퍼즐 전체 저장
-      started_at: startedAtIso,
-      ended_at: null,
-    })
-    .eq("id", roomId);
-
-  if (error) throw new Error(error.message);
-
-  return await getRoom(roomId);
-}
-
-
-  const startedAtIso = new Date().toISOString();
-
-  const { error } = await supabaseServer
-    .from("game_rooms")
-    .update({
-      status: "running",
-      puzzle_id: puzzleId,
-      puzzle_data: puzzle,
+      puzzle_data: p,
       started_at: startedAtIso,
       ended_at: null,
     })
