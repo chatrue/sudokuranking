@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { getRoom, submitResult, getPublicState } from "../../_store";
+import { submitResult, getPublicState } from "../../_store";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request, ctx: { params: Promise<{ roomId: string }> }) {
   const { roomId } = await ctx.params;
-  const room = getRoom(roomId);
-  if (!room) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
 
   const body = await req.json().catch(() => null);
   const memberId = String(body?.memberId ?? "");
@@ -14,8 +12,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ roomId: string
   const timeMs = Number(body?.timeMs ?? 0);
 
   try {
-    submitResult(room, memberId, score, timeMs);
-    return NextResponse.json({ ok: true, state: getPublicState(room) });
+    const room = await submitResult(roomId, memberId, score, timeMs);
+    if (!room) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+
+    return NextResponse.json({ ok: true, state: getPublicState(room) }, { headers: { "Cache-Control": "no-store" } });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message ?? "submit_failed" }, { status: 400 });
   }
