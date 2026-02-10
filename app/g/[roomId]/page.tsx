@@ -243,11 +243,12 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.status]);
 
-  useEffect(() => {
-    if (state?.status !== "running") return;
-    const id = window.setInterval(() => setTick((v) => v + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [state?.status]);
+// ✅ startedAt이 존재하는 순간부터(로비/러닝 상관없이) 1초 tick을 돌려서 시간 표시가 움직이게 함
+useEffect(() => {
+  if (!state?.startedAt) return;
+  const id = window.setInterval(() => setTick((v) => v + 1), 1000);
+  return () => window.clearInterval(id);
+}, [state?.startedAt]);
 
     const startedAtMs = useMemo(() => {
     const v: any = state?.startedAt;
@@ -261,11 +262,12 @@ useEffect(() => {
     return Number.isFinite(t) ? t : null;
   }, [state?.startedAt]);
 
-  const elapsedSec = useMemo(() => {
-    if (!startedAtMs) return 0;
-    return Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
-  }, [startedAtMs, tick]);
-
+const elapsedSec = useMemo(() => {
+  if (!state?.startedAt) return 0;
+  // tick이 1초마다 바뀌면서 elapsedSec도 1초마다 갱신됨
+  const _ = tick;
+  return Math.max(0, Math.floor((Date.now() - state.startedAt) / 1000));
+}, [state?.startedAt, tick]);
 
   const isSolved = useMemo(() => {
     if (cells.length !== 81) return false;
