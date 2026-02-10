@@ -198,10 +198,10 @@ export async function joinRoom(roomId: string, nickname: string, affiliation: st
   if (pin !== room.pin) throw new Error("bad_pin");
 
   const nn = nickname.trim();
-  const aff = affiliation.trim();
+  // ✅ 소속이 비어도 참가 허용 (기존: affiliation_required)
+  const aff = affiliation.trim() || "—";
 
   if (!nn) throw new Error("nickname_required");
-  if (!aff) throw new Error("affiliation_required");
 
   // 같은 닉네임 중복 방지(원하면 제거 가능)
   if (room.members.some((m) => m.nickname === nn)) throw new Error("nickname_taken");
