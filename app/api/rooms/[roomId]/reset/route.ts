@@ -1,13 +1,20 @@
-// app/api/rooms/[roomId]/reset/route.ts
-import { getRoom, resetRoom } from "../../_store";
+import { NextResponse } from "next/server";
+import { resetRoom, getPublicState } from "../../_store";
 
-export async function POST(_req: Request, ctx: { params: Promise<{ roomId: string }> }) {
+export const dynamic = "force-dynamic";
+
+export async function POST(req: Request, ctx: { params: Promise<{ roomId: string }> }) {
   const { roomId } = await ctx.params;
 
-  const room = getRoom(roomId);
-  if (!room) return Response.json({ ok: false, error: "not_found" }, { status: 404 });
+  const body = await req.json().catch(() => null);
+  const hostToken = body?.hostToken == null ? null : String(body.hostToken);
 
-  // NOTE: local prototype - no auth, but we only expose this in host UI.
-  resetRoom(room);
-  return Response.json({ ok: true, room });
+  try {
+    const room = await resetRoom(roomId, hostToken);
+    if (!room) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+
+    return NextResponse.json({ ok: true, state: getPublicState(room) }, { headers: { "Cache-Control": "no-store" } });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e?.message ?? "reset_failed" }, { status: 400 });
+  }
 }
