@@ -466,7 +466,7 @@ export default function GroupRoomPage() {
           <div className="headerRow">
             <div className="brand">SuDoKu ranking</div>
             <button className="iconBtn" onClick={() => router.push("/")}>
-              {t.home}
+              {settings.lang === "ko" ? "홈" : "Home"}
             </button>
           </div>
 
@@ -515,7 +515,7 @@ export default function GroupRoomPage() {
           <div className="headerRow">
             <div className="brand">SuDoKu ranking</div>
             <button className="iconBtn" onClick={() => router.push("/")}>
-              {t.home}
+              {settings.lang === "ko" ? "홈" : "Home"}
             </button>
           </div>
 
