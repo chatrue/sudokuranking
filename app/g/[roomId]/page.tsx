@@ -375,7 +375,7 @@ export default function GroupRoomPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           memberId,
-          score: scoreInfo.score,
+          score: scoreInfo.total,
           timeMs: Date.now() - startedAtMs,
         }),
       });
@@ -667,7 +667,7 @@ export default function GroupRoomPage() {
 
         <div style={{ padding: "0 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontSize: 12, color: "var(--muted)" }}>
-            {settings.lang === "ko" ? `점수: ${scoreInfo.score}` : `Score: ${scoreInfo.score}`}
+            {settings.lang === "ko" ? `점수: ${scoreInfo.total}` : `Score: ${scoreInfo.total}`}
           </div>
 
           <button className="submitBtn" disabled={!isSolved || submitted} onClick={submitResult}>
