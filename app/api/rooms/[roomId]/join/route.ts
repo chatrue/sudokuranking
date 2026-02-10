@@ -2,19 +2,56 @@ import { NextResponse } from "next/server";
 import { joinRoom } from "../../_store";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
-export async function POST(req: Request, ctx: { params: Promise<{ roomId: string }> }) {
-  const { roomId } = await ctx.params;
+function pickString(v: any): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  return "";
+}
 
-  const body = await req.json().catch(() => null);
-  const nickname = String(body?.nickname ?? "");
-  const affiliation = String(body?.affiliation ?? "");
-  const pin = String(body?.pin ?? "");
+export async function POST(req: Request, ctx: { params: { roomId: string } }) {
+  const { roomId } = ctx.params;
+
+  const body = await req.json().catch(() => ({} as any));
+
+  // ✅ 기존 클라이언트가 어떤 키로 보내든 최대한 받아주기(호환성)
+  const nickname =
+    pickString(body.nickname) ||
+    pickString(body.name) ||
+    pickString(body.userName) ||
+    pickString(body.username) ||
+    pickString(body.user_id) ||
+    pickString(body.userId);
+
+  const affiliation =
+    pickString(body.affiliation) ||
+    pickString(body.aff) ||
+    pickString(body.org) ||
+    pickString(body.organization) ||
+    pickString(body.team) ||
+    pickString(body.group);
+
+  const pin =
+    pickString(body.pin) ||
+    pickString(body.roomPin) ||
+    pickString(body.room_pin) ||
+    pickString(body.code) ||
+    pickString(body.roomCode) ||
+    pickString(body.room_code);
 
   try {
     const member = await joinRoom(roomId, nickname, affiliation, pin);
-    return NextResponse.json({ ok: true, memberId: member.id }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(
+      { ok: true, memberId: member.id },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "join_failed" }, { status: 400 });
+    // ✅ 디버깅에 유용하게 error를 그대로 내려줌 (클라이언트는 여전히 "참가실패"로 보여줄 수 있음)
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "join_failed" },
+      { status: 400, headers: { "Cache-Control": "no-store" } }
+    );
   }
 }
