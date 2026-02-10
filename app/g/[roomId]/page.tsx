@@ -344,29 +344,36 @@ useEffect(() => {
 
   
   async function join(nickArg?: any, affArg?: any, pinArg?: any) {
-    const nick = String(typeof nickArg === "string" ? nickArg : (nickname ?? "")).trim();
-    const p = String(typeof pinArg === "string" ? pinArg : (pin ?? "")).trim();
-    const aff = String(typeof affArg === "string" ? affArg : (affiliation ?? "")).trim();
+  const nick = String(typeof nickArg === "string" ? nickArg : (nickname ?? "")).trim();
+  const p = String(typeof pinArg === "string" ? pinArg : (pin ?? "")).trim();
+  const aff = String(typeof affArg === "string" ? affArg : (affiliation ?? "")).trim();
 
-    if (!nick) return showToast(t.enterNickname);
-    if (!p) return showToast(t.enterPin);
+  if (!nick) return showToast(t.enterNickname);
+  if (!p) return showToast(t.enterPin);
 
-    try {
-      const res = await fetch(`/api/rooms/${roomId}/join`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ nickname: nick, affiliation: aff, pin: p }),
-      });
-      const json = await res.json();
-      if (!json?.ok) throw new Error(json?.error || "join_failed");
-      setMemberId(String(json.memberId));
-      try { localStorage.setItem(`sudoku_member_${roomId}`, String(json.memberId)); } catch {}
-      showToast(settings.lang === "ko" ? "참가 완료!" : "Joined!");
-      await fetchState();
-    } catch (e: any) {
-      showToast(settings.lang === "ko" ? "참가 실패" : "Join failed");
+  try {
+    const res = await fetch(`/api/rooms/${roomId}/join`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ nickname: nick, affiliation: aff, pin: p }),
+    });
+
+    const json = await res.json().catch(() => ({} as any));
+    if (!res.ok || !json?.ok) {
+      throw new Error(String(json?.error || `http_${res.status}`));
     }
+
+    setMemberId(String(json.memberId));
+    try { localStorage.setItem(`sudoku_member_${roomId}`, String(json.memberId)); } catch {}
+    showToast(settings.lang === "ko" ? "참가 완료!" : "Joined!");
+    await fetchState();
+  } catch (e: any) {
+    const msg = String(e?.message ?? "join_failed");
+    // ✅ 이제 원인이 보임 (bad_pin / not_in_lobby / nickname_taken 등)
+    showToast(settings.lang === "ko" ? `참가 실패: ${msg}` : `Join failed: ${msg}`);
   }
+}
+
 
   async function endAsHost() {
     if (!isHostEffective) return;
