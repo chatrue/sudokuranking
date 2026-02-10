@@ -249,9 +249,23 @@ useEffect(() => {
     return () => window.clearInterval(id);
   }, [state?.status]);
 
-  const elapsedSec = !state?.startedAt
-    ? 0
-    : Math.max(0, Math.floor((Date.now() - state.startedAt) / 1000));
+    const startedAtMs = useMemo(() => {
+    const v: any = state?.startedAt;
+    if (!v) return null;
+
+    // number(ms)로 오면 그대로
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+
+    // string/Date로 오면 ms로 변환
+    const t = new Date(v).getTime();
+    return Number.isFinite(t) ? t : null;
+  }, [state?.startedAt]);
+
+  const elapsedSec = useMemo(() => {
+    if (!startedAtMs) return 0;
+    return Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
+  }, [startedAtMs, tick]);
+
 
   const isSolved = useMemo(() => {
     if (cells.length !== 81) return false;
