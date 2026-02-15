@@ -120,7 +120,13 @@ export default function GroupRoomPage() {
   async function resetMatchAsHost() {
     if (!isHostEffective) return;
     try {
-      await fetch(`/api/rooms/${roomId}/reset`, { method: "POST" });
+     const tok = localStorage.getItem(`sudoku_host_${roomId}`) || hostToken || "";
+await fetch(`/api/rooms/${roomId}/reset`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ hostToken: tok }),
+});
+
       await fetchState();
       showToast(settings.lang === "ko" ? "다시 시작했어요." : "Restarted.");
     } catch {
@@ -448,7 +454,13 @@ useEffect(() => {
   async function hostReset() {
     if (!isHostEffective) return;
     try {
-      await fetch(`/api/rooms/${roomId}/reset`, { method: "POST" });
+      const tok = localStorage.getItem(`sudoku_host_${roomId}`) || hostToken || "";
+await fetch(`/api/rooms/${roomId}/reset`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ hostToken: tok }),
+});
+
       setCells([]); // 다음 경기 퍼즐 재로딩 유도
       setSubmitted(false);
       await fetchState();
