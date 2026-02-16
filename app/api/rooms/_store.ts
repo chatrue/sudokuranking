@@ -203,34 +203,23 @@ export async function joinRoom(roomId: string, nickname: string, affiliation: st
 
   if (!nn) throw new Error("nickname_required");
 
-// 같은 닉네임 중복 방지(원하면 제거 가능)
-if (room.members.some((m) => m.nickname === nn)) throw new Error("nickname_taken");
+  // 같은 닉네임 중복 방지(원하면 제거 가능)
+  if (room.members.some((m) => m.nickname === nn)) throw new Error("nickname_taken");
 
-const memberId = randToken(12);
+  const memberId = randToken(12);
 
-const { error } = await supabaseServer.from("game_room_members").insert({
-  id: memberId,
-  room_id: roomId,
-  nickname: nn,
-  affiliation: aff,
-  joined_at: new Date().toISOString(),
-});
+  const { error } = await supabaseServer.from("game_room_members").insert({
+    id: memberId,
+    room_id: roomId,
+    nickname: nn,
+    affiliation: aff,
+    joined_at: new Date().toISOString(),
+  });
 
-if (error) {
-  // ⭐ DB unique violation 처리
-  const code = (error as any)?.code;
-  const msg = String((error as any)?.message ?? "");
+  if (error) throw new Error(error.message);
 
-  if (code === "23505" || msg.includes("duplicate key")) {
-    throw new Error("nickname_taken");
-  }
-
-  throw new Error(msg || "join_failed");
+  return { id: memberId };
 }
-
-return { id: memberId };
-}
-
 
 export async function updateConfig(roomId: string, hostToken: string, patch: Partial<RoomConfig>) {
   const room = await getRoom(roomId);
@@ -259,8 +248,7 @@ export async function startRoom(roomId: string, hostToken: string) {
 
   const startedAtIso = new Date().toISOString();
 
-  // ✅ Atomic update: status가 lobby일 때만 running으로 바뀌게 조건을 추가
-  const { data, error } = await supabaseServer
+  const { error } = await supabaseServer
     .from("game_rooms")
     .update({
       status: "running",
@@ -269,40 +257,21 @@ export async function startRoom(roomId: string, hostToken: string) {
       started_at: startedAtIso,
       ended_at: null,
     })
-    .eq("id", roomId)
-    .eq("status", "lobby") // ⭐ 핵심: lobby가 아니면 업데이트 0건
-    .select("id")
-    .maybeSingle();
+    .eq("id", roomId);
 
   if (error) throw new Error(error.message);
-
-  // ⭐ 여기로 오면 "이미 누군가 시작"한 상태 (중복 시작 방지)
-  if (!data) throw new Error("already_started");
 
   return await getRoom(roomId);
 }
 
-
-export async function submitResult(roomId: string, memberId: string, score: number, _timeMsFromClient: number) {
+export async function submitResult(roomId: string, memberId: string, score: number, timeMs: number) {
   const room = await getRoom(roomId);
   if (!room) throw new Error("not_found");
+
   if (room.status !== "running") throw new Error("not_running");
-  if (!room.startedAt) throw new Error("no_started_at");
 
   const member = room.members.find((m) => m.id === memberId);
   if (!member) throw new Error("member_not_found");
-
-  // ✅ startedAt을 ms로 안전 변환
-  const startedAtMs =
-  typeof room.startedAt === "number" && Number.isFinite(room.startedAt)
-    ? room.startedAt
-    : new Date(room.startedAt as any).getTime();
-
-    // ✅ 서버 기준 경과시간(클라이언트 timeMs 무시)
-   const timeMs = Math.max(
-  0,
-  Date.now() - (Number.isFinite(startedAtMs) ? startedAtMs : Date.now())
-   );
 
   const { error } = await supabaseServer.from("game_room_results").upsert(
     {
@@ -316,6 +285,7 @@ export async function submitResult(roomId: string, memberId: string, score: numb
     },
     { onConflict: "room_id,member_id" }
   );
+
   if (error) throw new Error(error.message);
 
   return await getRoom(roomId);
@@ -342,8 +312,8 @@ export async function resetRoom(roomId: string, hostToken?: string | null) {
   const room = await getRoom(roomId);
   if (!room) throw new Error("not_found");
 
- // ✅ 항상 방장만
-  requireHost(room, hostToken);
+  // reset은 호스트만 허용하고 싶으면 아래 2줄을 사용
+  if (hostToken != null) requireHost(room, hostToken);
 
   if (room.status !== "ended" && room.status !== "lobby") throw new Error("cannot_reset_now");
 
