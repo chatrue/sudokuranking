@@ -1,56 +1,97 @@
-# SuDoKu ranking (Next.js + Supabase, PWA)
+**# SuDoKu Ranking
 
-## 0) 준비물
-- Node.js 18+ (권장 20+)
-- Supabase 프로젝트 1개
+**SuDoKu Ranking**은 개인 플레이와 단체 게임을 모두 지원하는
+**PWA 기반 스도쿠 랭킹 웹 애플리케이션**입니다.
 
-## 1) Supabase 설정
-1. Supabase 프로젝트 생성
-2. SQL Editor에서 `supabase.sql` 실행
-3. Project Settings → API 에서
-   - Project URL
-   - anon public key
-   - service_role key
-   값을 확인
+복잡한 기능보다 **안정적인 동작과 직관적인 사용성**을 우선으로 설계되었습니다.
 
-## 2) 로컬 실행
+---
+
+## 주요 기능
+
+### 스도쿠 플레이
+
+* 난이도 선택 (Easy / Normal / Hard)
+* 직관적인 숫자 입력 UI
+* 실시간 충돌 검사
+* 동일 숫자 강조 표시 옵션
+
+### 랭킹
+
+* 개인 플레이 결과 기반 점수 집계
+* 단순하고 빠른 랭킹 확인
+
+### 단체 게임 (함께 즐기기)
+
+* 방 생성 및 참가
+* PIN 기반 참가 방식
+* 방장 권한(시작 / 종료 / 리셋)
+* 서버 기준 시간으로 공정한 결과 집계
+
+### PWA 지원
+
+* 모바일 및 태블릿 환경 최적화
+* 홈 화면 추가 가능
+* 설치 없이 즉시 사용 가능
+
+---
+
+## 기술 스택
+
+* **Next.js (App Router)**
+* **TypeScript**
+* **Supabase**
+* **PWA (Manifest)**
+
+---
+
+## 로컬 실행 방법
+
 ```bash
 npm install
-cp .env.local.example .env.local
-# .env.local에 Supabase 값 넣기
 npm run dev
 ```
 
-브라우저에서 http://localhost:3000
+개발 서버 실행 후 브라우저에서 접속:
 
-## 3) 배포(예: Vercel)
-- 환경변수 3개를 그대로 등록:
-  - NEXT_PUBLIC_SUPABASE_URL
-  - NEXT_PUBLIC_SUPABASE_ANON_KEY
-  - SUPABASE_SERVICE_ROLE_KEY
+```
+http://localhost:3000
+```
 
-## 4) 점수 규칙
-- 기본점수: 쉬움 3 / 중간 5 / 어려움 7
-- 보너스: 쉬움 3분 / 중간 5분 / 어려움 7분 이내 완료 시 (기본점수와 동일한 보너스 점수)
-- 감점:
-  - 같은 숫자 보임 켬: -1
-  - 완성 숫자 표시 켬: -1
+---
 
-보너스 점수 값은 `lib/scoring.ts`의 `BONUS_POINTS`에서 바꿀 수 있습니다.
+## 프로젝트 구조 (요약)
 
-## 5) 기능
-- 스도쿠 입력/메모/삭제
-- 되돌리기/다시하기(Undo/Redo)
-- 새문제(샘플 퍼즐 풀에서 랜덤)
-- 타이머
-- 설정(출신국가/언어/기본 난이도/같은 숫자 보임/완성 숫자 표시)
-- 제출하기(완성+충돌 없음일 때만)
-- 랭킹 Today/Total 조회(모달)
-- 내보내기 CSV 다운로드
+```
+app/
+ ├─ api/rooms/        # 단체 게임 관련 API
+ ├─ g/[roomId]/       # 단체 게임 화면
+components/
+ ├─ GroupHostModal    # 방장 관리 UI
+lib/
+ ├─ sudoku.ts         # 스도쿠 로직
+ ├─ scoring.ts        # 점수 계산
+```
 
-## 6) 다음 확장(원하면 내가 계속 붙여줄 수 있어)
-- 퍼즐 생성기/퍼즐 풀 확장
-- 난이도별 “퍼즐 검증”
-- 랭킹 UI(더 예쁘게, 내 기록 하이라이트)
-- 부정 제출 방지(퍼즐 해시/정답 검증 강화)
-- iOS 홈화면 최적화(스플래시, 서비스워커 오프라인)
+---
+
+## 설계 방향
+
+* 안정적인 상태 관리
+* 서버 기준 시간 처리로 공정성 확보
+* 모바일 환경 우선 UI
+* 불필요한 기능 최소화
+
+---
+
+## 제작자
+
+**Chatrue**
+
+---
+
+## 참고 사항
+
+본 프로젝트는 학습 및 개인 프로젝트 용도로 제작되었습니다.
+기능 개선이나 구조 개선에 대한 제안은 언제든 환영합니다.
+**
