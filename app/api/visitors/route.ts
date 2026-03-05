@@ -1,4 +1,4 @@
-import { supabaseServer } from "@/lib/supabaseServer";
+import { getSupabaseServer } from "@/lib/supabaseServer";
 
 function kstDateStr(): string {
   const now = new Date();
@@ -16,6 +16,7 @@ function kstDateStr(): string {
  * - rooms(단체)는 submit 단계에서 이미 제외되므로 여기선 추가 분기 불필요
  */
 export async function GET() {
+  const supabaseServer = getSupabaseServer();
   const today = kstDateStr();
 
   // Total = scores에 존재하는 고유 사용자 수

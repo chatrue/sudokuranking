@@ -1,4 +1,4 @@
-import { supabaseServer } from "@/lib/supabaseServer";
+import { getSupabaseServer } from "@/lib/supabaseServer";
 import { kstDateString } from "@/lib/time";
 
 export const runtime = "nodejs";
@@ -24,6 +24,7 @@ function toCSV(rows: any[]): string {
 }
 
 export async function GET(req: Request) {
+  const supabaseServer = getSupabaseServer();
   const url = new URL(req.url);
   const scope = (url.searchParams.get("scope") ?? "today") as "today" | "total";
   const format = (url.searchParams.get("format") ?? "csv") as "csv" | "json";

@@ -1,6 +1,7 @@
-import { supabaseServer } from "@/lib/supabaseServer";
+import { getSupabaseServer } from "@/lib/supabaseServer";
 
 export async function GET(req: Request) {
+  const supabaseServer = getSupabaseServer();
   // ✅ 누적(전체) 점수 기준 Top1만 반환
   const { data, error } = await supabaseServer
     .from("scores")

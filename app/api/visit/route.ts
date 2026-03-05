@@ -1,4 +1,4 @@
-import { supabaseServer } from "@/lib/supabaseServer";
+import { getSupabaseServer } from "@/lib/supabaseServer";
 
 type Body = {
   deviceId: string;
@@ -15,6 +15,7 @@ function kstDateStr(): string {
 
 export async function POST(req: Request) {
   try {
+    const supabaseServer = getSupabaseServer();
     const body = (await req.json()) as Body;
     const deviceId = String(body?.deviceId ?? "").trim();
     if (!deviceId) {
