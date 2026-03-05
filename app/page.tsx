@@ -5,9 +5,9 @@ import { STR } from "@/lib/i18n";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type AppSettings, type Difficulty } from "@/lib/settings";
 import { SettingsModal } from "@/components/SettingsModal";
 import { RankingsModal } from "@/components/RankingsModal";
+import { QRCanvas } from "@/components/QRCanvas";
 import { Toast } from "@/components/Toast";
-import { GroupHostModal } from "@/components/GroupHostModal";
-import { pickPuzzle, puzzleToCells, type Cell, anyConflict, conflicts, getSameNumberIndexes, countNumber } from "@/lib/sudoku";
+import { pickPuzzle, puzzleToCells, type Cell, anyConflict, conflicts, getSameNumberIndexes, countNumber, PUZZLES, type Puzzle } from "@/lib/sudoku";
 import { computeScore } from "@/lib/scoring";
 import { formatTime } from "@/lib/time";
 
@@ -30,8 +30,38 @@ function getKstDateStr() {
 }
 
 function difficultyLabel(d: Difficulty, t: any) {
-  return d === "easy" ? t.easy : d === "medium" ? t.medium : t.hard;
+  return d === "easy"
+    ? t.easy
+    : d === "medium"
+    ? t.medium
+    : d === "hard"
+    ? t.hard
+    : d === "pro"
+    ? (t.pro ?? "프로")
+    : (t.insane ?? "난제");
 }
+
+
+
+function findBundledPuzzleById(id: string): Puzzle | null {
+  const p = PUZZLES.find((x) => x.id === id);
+  return p ?? null;
+}
+
+function pickBundledPuzzle(difficulty: Difficulty): Puzzle {
+  const pool = PUZZLES.filter((p) => p.difficulty === difficulty);
+  const base = pool.length ? pool : PUZZLES;
+  return base[Math.floor(Math.random() * base.length)] as Puzzle;
+}
+
+function setUrlPuzzle(id: string) {
+  try {
+    const u = new URL(window.location.href);
+    u.searchParams.set("puzzle", id);
+    window.history.replaceState({}, "", u.toString());
+  } catch {}
+}
+
 
 function drawSudokuPng(args: {
   difficulty: Difficulty;
@@ -158,13 +188,13 @@ export default function Page() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rankOpen, setRankOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   type RankingRow = { player_id: string; country: string | null };
   const [rankRows, setRankRows] = useState<RankingRow[]>([]);
   const [top1Row, setTop1Row] = useState<RankingRow | null>(null);
   const [rankLoading, setRankLoading] = useState(false);
 
   const [toast, setToast] = useState("");
-  const [groupOpen, setGroupOpen] = useState(false);
   const toastRef = useRef<number | null>(null);
   const showToast = (msg: string) => {
     setToast(msg);
@@ -275,6 +305,32 @@ export default function Page() {
   useEffect(() => {
     const s = loadSettings();
     setSettings(s);
+
+    // ✅ 공유 링크(?puzzle=...) 우선 로드: 같은 스도쿠로 시작
+    if (typeof window !== "undefined") {
+      try {
+        const u = new URL(window.location.href);
+        const forcedId = u.searchParams.get("puzzle") || "";
+        const forced = forcedId ? findBundledPuzzleById(forcedId) : null;
+        if (forced) {
+          // URL 퍼즐로 시작하면 로컬 복원보다 우선
+          setDifficulty(forced.difficulty as any);
+          setPuzzleId(forced.id);
+          setCells(puzzleToCells(forced));
+          setSelected(0);
+          setMemoMode(false);
+          setElapsedSec(0);
+          setUndoStack([{ cells: deepCopyCells(puzzleToCells(forced)) }]);
+          setRedoStack([]);
+          solvedAwardedRef.current = false;
+          setLastSolvedScore(0);
+          skipNextNewPuzzleRef.current = true; // difficulty effect 1회 스킵
+          setUrlPuzzle(forced.id);
+          return;
+        }
+      } catch {}
+    }
+
 
     // ✅ 마지막 플레이(퍼즐/시간/칸) 복원
     if (typeof window !== "undefined") {
@@ -413,10 +469,22 @@ export default function Page() {
     setRedoStack([]);
   }
 
-  function startNewPuzzle(d: Difficulty) {
+  function startNewPuzzle(d: Difficulty, forcedPuzzleId?: string) {
     stopSoloTimer();
-    const p = pickPuzzle(d);
+
+    // ✅ 공유 링크로 들어온 경우: 번들 퍼즐 id로 로드
+    let p: Puzzle | null = null;
+    if (forcedPuzzleId) {
+      p = findBundledPuzzleById(forcedPuzzleId);
+    }
+
+    // ✅ 기본: 번들 퍼즐에서 랜덤 선택 (공유 가능한 퍼즐만 사용)
+    if (!p) {
+      p = pickBundledPuzzle(d);
+    }
+
     const init = puzzleToCells(p);
+    setDifficulty((p.difficulty === "easy" || p.difficulty === "medium" || p.difficulty === "hard") ? p.difficulty : d);
     setPuzzleId(p.id);
     setCells(init);
     setSelected(0);
@@ -427,6 +495,11 @@ export default function Page() {
     setRedoStack([]);
     solvedAwardedRef.current = false;
     setLastSolvedScore(0);
+
+    // ✅ 현재 퍼즐 id를 URL에 반영 (같은 문제 공유용)
+    if (typeof window !== "undefined") {
+      setUrlPuzzle(p.id);
+    }
   }
 
   function awardIfSolved(nextCells: Cell[]) {
@@ -661,6 +734,43 @@ export default function Page() {
 
   const diffLabel = difficultyLabel(difficulty, t);
 
+  const shareUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const base = `${window.location.origin}${window.location.pathname}`;
+    return `${base}?puzzle=${encodeURIComponent(puzzleId)}`;
+  }, [puzzleId]);
+
+  const canNativeShare = typeof navigator !== "undefined" && !!(navigator as any).share;
+
+  async function doShare() {
+    if (!shareUrl) return;
+    try {
+      if (canNativeShare) {
+        await (navigator as any).share({ title: "Sudoku Ranking", text: "같은 스도쿠로 기록을 겨뤄보세요!", url: shareUrl });
+        return;
+      }
+      await navigator.clipboard.writeText(shareUrl);
+      showToast("같은 스도쿠 링크가 복사되었습니다.");
+    } catch {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        showToast("같은 스도쿠 링크가 복사되었습니다.");
+      } catch {
+        showToast("공유에 실패했어요.");
+      }
+    }
+  }
+
+  async function copyShareLink() {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      showToast("같은 스도쿠 링크가 복사되었습니다.");
+    } catch {
+      showToast("복사에 실패했어요.");
+    }
+  }
+
   return (
     <div className="container">
       <div className="card">
@@ -784,7 +894,7 @@ export default function Page() {
             {t.total} {totalVisits} · {t.today} {todayVisits}
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <button className="linkBtn" onClick={() => setGroupOpen(true)}>{t.groupPlay}</button>
+            <button className="linkBtn" onClick={() => setShareOpen(true)}>{t.groupPlay}</button>
             <button className="linkBtn" onClick={exportProblemPng}>{t.problemSave}</button>
           </div>
         </div>
@@ -807,7 +917,41 @@ export default function Page() {
 />
 
 
-      <GroupHostModal open={groupOpen} settings={settings} onCloseToPersonal={() => setGroupOpen(false)} />
+      
+
+      
+{shareOpen ? (
+  <div className="modalOverlay" role="dialog" aria-modal="true" onClick={() => setShareOpen(false)}>
+    <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modalHeader">
+        <div className="modalTitle">같은 스도쿠 공유</div>
+        <button className="iconBtn" onClick={() => setShareOpen(false)} aria-label="닫기">✕</button>
+      </div>
+      <div className="modalBody" style={{ alignItems: "center" }}>
+        <div style={{ textAlign: "center", fontSize: 13, color: "var(--muted)", lineHeight: 1.4 }}>
+          아래 QR을 스캔하거나, 링크를 보내면<br/>친구도 <b>똑같은 문제</b>로 시작해요.
+        </div>
+
+        <div style={{ padding: 14, borderRadius: 18, border: "1px solid var(--border)", background: "rgba(245,246,248,0.55)" }}>
+          <QRCanvas value={shareUrl} size={180} />
+        </div>
+
+        <div style={{ width: "100%", display: "flex", gap: 10 }}>
+          <button className="submitBtn" onClick={doShare} style={{ flex: 1 }}>
+            보내기
+          </button>
+          <button className="pillBtn" onClick={copyShareLink} style={{ flex: 1 }}>
+            링크 복사
+          </button>
+        </div>
+
+        <div style={{ width: "100%", wordBreak: "break-all", fontSize: 12, color: "var(--muted)", textAlign: "center" }}>
+          {shareUrl}
+        </div>
+      </div>
+    </div>
+  </div>
+) : null}
 
       <Toast message={toast} />
     </div>

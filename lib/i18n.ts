@@ -16,16 +16,6 @@ export const STR = {
     over: "초과",
     noParticipantsYet: "아직 참가자가 없습니다.",
     loadingEllipsis: "불러오는 중…",
-    roomExpiredHint: "방이 만료되었거나(또는 아직 생성되지 않았어요). 방장에게 다시 QR을 요청해 주세요.",
-
-    // ✅ Group host (QR / lobby / running / ended)
-    openWithQr: "QR로 접속",
-    sendInvite: "보내기",
-    startMatch: "경기 시작",
-    hostJoins: "방장으로 입장",
-    progressTime: "진행 시간 {t}",
-    submissionsCount: "제출 {a}/{b}",
-    exitGame: "게임 종료",
 
     penaltyOn: "켜짐: 1점 감점",
     rank1: "1위",
@@ -124,16 +114,6 @@ export const STR = {
     over: "Over",
     noParticipantsYet: "No participants yet.",
     loadingEllipsis: "Loading…",
-    roomExpiredHint: "The room has expired (or hasn't been created yet). Ask the host to resend the QR.",
-
-    // ✅ Group host (QR / lobby / running / ended)
-    openWithQr: "Open with QR",
-    sendInvite: "Send",
-    startMatch: "Start",
-    hostJoins: "Host joins",
-    progressTime: "Elapsed {t}",
-    submissionsCount: "Submitted {a}/{b}",
-    exitGame: "Exit",
 
     penaltyOn: "ON: -1 pt",
     rank1: "1st",
