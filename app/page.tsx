@@ -898,7 +898,10 @@ export default function Page() {
             <button className="linkBtn" onClick={exportProblemPng}>{t.problemSave}</button>
           </div>
         </div>
-      </div>
+        <footer className="appFooter">
+        Made by Chatrue
+        </footer>
+        </div>
 
       <SettingsModal
         open={settingsOpen}
