@@ -55,6 +55,16 @@ function safeParseGridParam(raw: string | null): string | null {
   return g;
 }
 
+
+function safeParseSeedParam(raw: string | null): number | null {
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const v = Math.floor(n);
+  if (v < 0) return null;
+  return v >>> 0;
+}
+
 function gridFromGivenCells(cells: any[]): string {
   if (!Array.isArray(cells) || cells.length !== 81) return "";
   return cells
@@ -80,12 +90,21 @@ function findBundledPuzzleById(id: string): Puzzle | null {
   return p ?? null;
 }
 
-function setUrlShare(grid: string, difficulty: Difficulty) {
+function setUrlShare(args: { difficulty: Difficulty; seed?: number | null; grid?: string | null }) {
   try {
     const u = new URL(window.location.href);
-    u.searchParams.set("d", difficulty);
-    u.searchParams.set("g", grid);
+    u.searchParams.set("d", args.difficulty);
     u.searchParams.delete("puzzle"); // legacy param
+    if (typeof args.seed === "number" && Number.isFinite(args.seed)) {
+      u.searchParams.set("seed", String(args.seed >>> 0));
+      u.searchParams.delete("g");
+    } else if (args.grid && args.grid.length === 81) {
+      u.searchParams.set("g", args.grid);
+      u.searchParams.delete("seed");
+    } else {
+      u.searchParams.delete("seed");
+      u.searchParams.delete("g");
+    }
     window.history.replaceState({}, "", u.toString());
   } catch {}
 }
@@ -203,6 +222,7 @@ export default function Page() {
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [puzzleId, setPuzzleId] = useState("");
   const [puzzleGrid, setPuzzleGrid] = useState<string>(""); // 81 chars, 0 = empty (shareable)
+  const [puzzleSeed, setPuzzleSeed] = useState<number | null>(null);
   const [cells, setCells] = useState<Cell[]>([]);
   const [selected, setSelected] = useState(0);
   const [memoMode, setMemoMode] = useState(false);
@@ -344,8 +364,15 @@ export default function Page() {
         const u = new URL(window.location.href);
 
         const gridParam = safeParseGridParam(u.searchParams.get("g"));
+        const seedParam = safeParseSeedParam(u.searchParams.get("seed"));
         const diffParam = u.searchParams.get("d");
         const forcedDiff = isDifficulty(diffParam) ? diffParam : s.defaultDifficulty;
+
+        if (seedParam !== null) {
+          startNewPuzzle(forcedDiff, { forcedSeed: seedParam, forcedDifficulty: forcedDiff });
+          skipNextNewPuzzleRef.current = true; // difficulty effect 1회 스킵
+          return;
+        }
 
         if (gridParam) {
           startNewPuzzle(forcedDiff, { forcedGrid: gridParam, forcedDifficulty: forcedDiff });
@@ -376,6 +403,7 @@ export default function Page() {
             const savedPuzzleId = typeof cur?.puzzleId === "string" ? cur.puzzleId : "";
             const savedGrid = typeof cur?.puzzleGrid === "string" ? cur.puzzleGrid : "";
             const savedElapsed = Number(cur?.elapsedSec ?? 0) || 0;
+            const savedSeed = Number.isFinite(cur?.puzzleSeed) ? Number(cur.puzzleSeed) : null;
             const savedCells = Array.isArray(cur?.cells) ? (cur.cells as Cell[]) : null;
 
             const canUse =
@@ -388,6 +416,7 @@ export default function Page() {
               setDifficulty(savedDifficulty);
               setPuzzleId(savedPuzzleId);
               setPuzzleGrid(savedGrid || gridFromGivenCells(savedCells));
+              setPuzzleSeed(savedSeed);
               setCells(savedCells);
               setSelected(0);
               setMemoMode(false);
@@ -398,8 +427,10 @@ export default function Page() {
               setLastSolvedScore(0);
 
               // URL도 현재 퍼즐로 맞춰두기(공유용)
-              if (savedGrid) {
-                setUrlShare(savedGrid, savedDifficulty);
+              if (savedSeed !== null) {
+                setUrlShare({ difficulty: savedDifficulty, seed: savedSeed });
+              } else if (savedGrid) {
+                setUrlShare({ difficulty: savedDifficulty, grid: savedGrid });
               }
               skipNextNewPuzzleRef.current = true; // difficulty effect 1회 스킵
               return;
@@ -493,7 +524,7 @@ export default function Page() {
         localStorage.setItem(soloProgressKey, JSON.stringify({ puzzleId, elapsedSec, cells }));
       } catch {}
       try {
-        localStorage.setItem(SOLO_CURRENT_KEY, JSON.stringify({ difficulty, puzzleId, puzzleGrid, elapsedSec, cells }));
+        localStorage.setItem(SOLO_CURRENT_KEY, JSON.stringify({ difficulty, puzzleId, puzzleGrid, puzzleSeed, elapsedSec, cells }));
       } catch {}
     }, 200);
 
@@ -507,14 +538,17 @@ export default function Page() {
 
   function startNewPuzzle(
     d: Difficulty,
-    opts?: { forcedPuzzleId?: string; forcedGrid?: string; forcedDifficulty?: Difficulty }
+    opts?: { forcedPuzzleId?: string; forcedGrid?: string; forcedSeed?: number; forcedDifficulty?: Difficulty }
   ) {
     stopSoloTimer();
 
     let p: Puzzle | null = null;
 
-    // ✅ 공유 링크로 들어온 경우: grid 우선 로드 (무한 생성 퍼즐도 동일하게 공유 가능)
-    if (opts?.forcedGrid) {
+    // ✅ 공유 링크로 들어온 경우: seed 우선 로드 (짧은 링크로 동일 퍼즐 재생성)
+    if (typeof opts?.forcedSeed === "number") {
+      const fd = opts.forcedDifficulty && isDifficulty(opts.forcedDifficulty) ? opts.forcedDifficulty : d;
+      p = pickPuzzle(fd, [], opts.forcedSeed);
+    } else if (opts?.forcedGrid) {
       const fd = opts.forcedDifficulty && isDifficulty(opts.forcedDifficulty) ? opts.forcedDifficulty : d;
       p = {
         id: stablePuzzleId(fd, opts.forcedGrid),
@@ -535,13 +569,15 @@ export default function Page() {
 
     const diff = (p.difficulty as Difficulty) ?? d;
     const grid = p.grid;
-    const pid = stablePuzzleId(diff, grid);
+    const seed = typeof p.seed === "number" ? p.seed : (typeof opts?.forcedSeed === "number" ? opts.forcedSeed : null);
+    const pid = typeof seed === "number" ? `seed-${diff}-${seed}` : stablePuzzleId(diff, grid);
 
-    const init = puzzleToCells({ ...p, id: pid, difficulty: diff });
+    const init = puzzleToCells({ ...p, id: pid, difficulty: diff, seed: seed ?? undefined });
 
     setDifficulty(diff);
     setPuzzleId(pid);
     setPuzzleGrid(grid);
+    setPuzzleSeed(seed);
 
     setCells(init);
     setSelected(0);
@@ -555,7 +591,7 @@ export default function Page() {
 
     // ✅ 현재 퍼즐을 URL에 반영 (같은 문제 공유용)
     if (typeof window !== "undefined") {
-      setUrlShare(grid, diff);
+      setUrlShare({ difficulty: diff, seed, grid });
     }
   }
 
@@ -797,9 +833,13 @@ export default function Page() {
     const base = `${window.location.origin}${window.location.pathname}`;
     const params = new URLSearchParams();
     params.set("d", difficulty);
-    params.set("g", puzzleGrid);
+    if (typeof puzzleSeed === "number" && Number.isFinite(puzzleSeed)) {
+      params.set("seed", String(puzzleSeed >>> 0));
+    } else {
+      params.set("g", puzzleGrid);
+    }
     return `${base}?${params.toString()}`;
-  }, [difficulty, puzzleGrid]);
+  }, [difficulty, puzzleGrid, puzzleSeed]);
 
   const canNativeShare = typeof navigator !== "undefined" && !!(navigator as any).share;
 

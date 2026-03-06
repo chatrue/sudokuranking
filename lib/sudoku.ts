@@ -11,6 +11,7 @@ export type Puzzle = {
   // 81 chars, '0' for empty
   grid: string;
   solution: string;
+  seed?: number;
 };
 
 
@@ -154,18 +155,19 @@ export function gridMatchesSolution(grid: string, solution: string): boolean {
 
 export function pickPuzzle(
   difficulty: Puzzle["difficulty"],
-  excludeIds: string[] = []
+  excludeIds: string[] = [],
+  seed?: number
 ): Puzzle {
   // Prefer random-generated puzzles (not transformations)
   for (let tries = 0; tries < 25; tries++) {
-    const gen = generateSudoku(difficulty);
-    const id = `gen-${difficulty}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const gen = generateSudoku(difficulty, seed);
+    const id = typeof gen.seed === "number" ? `seed-${difficulty}-${gen.seed}` : `gen-${difficulty}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     if (!isSolutionValid(gen.solution)) continue;
     if (!isGridValid(gen.grid)) continue;
     if (!gridMatchesSolution(gen.grid, gen.solution)) continue;
     // id is unique enough; excludeIds not needed but keep for API symmetry
     if (excludeIds.includes(id)) continue;
-    return { id, difficulty, grid: gen.grid, solution: gen.solution };
+    return { id, difficulty, grid: gen.grid, solution: gen.solution, seed: gen.seed };
   }
 
   // Fallback to bundled puzzles

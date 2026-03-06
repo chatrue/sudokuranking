@@ -1,14 +1,34 @@
-// Random Sudoku generator (no transformations of existing puzzles)
+// Random Sudoku generator with optional seed support
 // - Generates a full solution with backtracking, then removes cells to target clue count
 // - Validates given grid consistency
 // Note: uniqueness is not guaranteed (kept lightweight for PWA/local use)
 
 export type Difficulty = "easy" | "medium" | "hard" | "pro" | "insane";
 
-function shuffle<T>(arr: T[]): T[] {
+type Rand = () => number;
+
+function mulberry32(seed: number): Rand {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function normalizeSeed(seed?: number): number {
+  if (typeof seed !== "number" || !Number.isFinite(seed)) {
+    return Math.floor(Math.random() * 0xffffffff) >>> 0;
+  }
+  return (Math.floor(seed) >>> 0) || 1;
+}
+
+function shuffle<T>(arr: T[], rand: Rand): T[] {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rand() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -29,29 +49,31 @@ function isValidPlacement(grid: number[], r: number, c: number, n: number) {
   return true;
 }
 
-function fillGrid(grid: number[]): boolean {
+function fillGrid(grid: number[], rand: Rand): boolean {
   const idx = grid.indexOf(0);
   if (idx === -1) return true;
   const r = Math.floor(idx / 9);
   const c = idx % 9;
-  const nums = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  const nums = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9], rand);
   for (const n of nums) {
     if (!isValidPlacement(grid, r, c, n)) continue;
     grid[idx] = n;
-    if (fillGrid(grid)) return true;
+    if (fillGrid(grid, rand)) return true;
     grid[idx] = 0;
   }
   return false;
 }
 
-export function generateSudoku(difficulty: Difficulty): { grid: string; solution: string } {
+export function generateSudoku(difficulty: Difficulty, seed?: number): { grid: string; solution: string; seed: number } {
+  const normalizedSeed = normalizeSeed(seed);
+  const rand = mulberry32(normalizedSeed);
   const solutionGrid = new Array(81).fill(0);
 
   // Seed with randomized first row for variety
-  const firstRow = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  const firstRow = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9], rand);
   for (let c = 0; c < 9; c++) solutionGrid[c] = firstRow[c];
 
-  fillGrid(solutionGrid);
+  fillGrid(solutionGrid, rand);
 
   const solution = solutionGrid.join("");
 
@@ -68,7 +90,7 @@ export function generateSudoku(difficulty: Difficulty): { grid: string; solution
             : 22; // insane
 
   const puzzle = solutionGrid.slice();
-  const positions = shuffle(Array.from({ length: 81 }, (_, i) => i));
+  const positions = shuffle(Array.from({ length: 81 }, (_, i) => i), rand);
   let clues = 81;
 
   for (const pos of positions) {
@@ -94,5 +116,5 @@ export function generateSudoku(difficulty: Difficulty): { grid: string; solution
   }
 
   const grid = puzzle.map((n) => String(n)).join("").replace(/0/g, "0");
-  return { grid, solution };
+  return { grid, solution, seed: normalizedSeed };
 }
