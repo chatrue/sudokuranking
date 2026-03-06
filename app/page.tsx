@@ -43,24 +43,53 @@ function difficultyLabel(d: Difficulty, t: any) {
 
 
 
+function isDifficulty(x: any): x is Difficulty {
+  return x === "easy" || x === "medium" || x === "hard" || x === "pro" || x === "insane";
+}
+
+function safeParseGridParam(raw: string | null): string | null {
+  if (!raw) return null;
+  const g = String(raw).trim();
+  if (g.length !== 81) return null;
+  if (!/^[0-9]{81}$/.test(g)) return null;
+  return g;
+}
+
+function gridFromGivenCells(cells: any[]): string {
+  if (!Array.isArray(cells) || cells.length !== 81) return "";
+  return cells
+    .map((c) => {
+      const v = Number(c?.value ?? 0) || 0;
+      return c?.given ? String(v) : "0";
+    })
+    .join("");
+}
+
+function stablePuzzleId(difficulty: Difficulty, grid: string): string {
+  // lightweight stable hash (djb2)
+  let h = 5381;
+  const s = `${difficulty}:${grid}`;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+  // >>>0 makes it unsigned
+  const u = (h >>> 0).toString(36);
+  return `g-${difficulty}-${u}`;
+}
+
 function findBundledPuzzleById(id: string): Puzzle | null {
   const p = PUZZLES.find((x) => x.id === id);
   return p ?? null;
 }
 
-function pickBundledPuzzle(difficulty: Difficulty): Puzzle {
-  const pool = PUZZLES.filter((p) => p.difficulty === difficulty);
-  const base = pool.length ? pool : PUZZLES;
-  return base[Math.floor(Math.random() * base.length)] as Puzzle;
-}
-
-function setUrlPuzzle(id: string) {
+function setUrlShare(grid: string, difficulty: Difficulty) {
   try {
     const u = new URL(window.location.href);
-    u.searchParams.set("puzzle", id);
+    u.searchParams.set("d", difficulty);
+    u.searchParams.set("g", grid);
+    u.searchParams.delete("puzzle"); // legacy param
     window.history.replaceState({}, "", u.toString());
   } catch {}
 }
+
 
 
 function drawSudokuPng(args: {
@@ -173,6 +202,7 @@ export default function Page() {
 
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [puzzleId, setPuzzleId] = useState("");
+  const [puzzleGrid, setPuzzleGrid] = useState<string>(""); // 81 chars, 0 = empty (shareable)
   const [cells, setCells] = useState<Cell[]>([]);
   const [selected, setSelected] = useState(0);
   const [memoMode, setMemoMode] = useState(false);
@@ -306,31 +336,34 @@ export default function Page() {
     const s = loadSettings();
     setSettings(s);
 
-    // ✅ 공유 링크(?puzzle=...) 우선 로드: 같은 스도쿠로 시작
+    // ✅ 공유 링크 우선 로드:
+    // - 새 방식: ?d=easy|medium|hard|pro|insane&g=81digits(0=empty)
+    // - 레거시:  ?puzzle=easy-1 ...
     if (typeof window !== "undefined") {
       try {
         const u = new URL(window.location.href);
-        const forcedId = u.searchParams.get("puzzle") || "";
-        const forced = forcedId ? findBundledPuzzleById(forcedId) : null;
-        if (forced) {
-          // URL 퍼즐로 시작하면 로컬 복원보다 우선
-          setDifficulty(forced.difficulty as any);
-          setPuzzleId(forced.id);
-          setCells(puzzleToCells(forced));
-          setSelected(0);
-          setMemoMode(false);
-          setElapsedSec(0);
-          setUndoStack([{ cells: deepCopyCells(puzzleToCells(forced)) }]);
-          setRedoStack([]);
-          solvedAwardedRef.current = false;
-          setLastSolvedScore(0);
+
+        const gridParam = safeParseGridParam(u.searchParams.get("g"));
+        const diffParam = u.searchParams.get("d");
+        const forcedDiff = isDifficulty(diffParam) ? diffParam : s.defaultDifficulty;
+
+        if (gridParam) {
+          startNewPuzzle(forcedDiff, { forcedGrid: gridParam, forcedDifficulty: forcedDiff });
           skipNextNewPuzzleRef.current = true; // difficulty effect 1회 스킵
-          setUrlPuzzle(forced.id);
           return;
+        }
+
+        const legacyId = u.searchParams.get("puzzle") || "";
+        if (legacyId) {
+          const forced = findBundledPuzzleById(legacyId);
+          if (forced) {
+            startNewPuzzle(forced.difficulty as any, { forcedPuzzleId: forced.id });
+            skipNextNewPuzzleRef.current = true; // difficulty effect 1회 스킵
+            return;
+          }
         }
       } catch {}
     }
-
 
     // ✅ 마지막 플레이(퍼즐/시간/칸) 복원
     if (typeof window !== "undefined") {
@@ -339,45 +372,48 @@ export default function Page() {
         if (rawCur) {
           const cur = JSON.parse(rawCur);
           if (cur && typeof cur === "object") {
-            const savedDifficulty = cur?.difficulty as Difficulty | undefined;
+            const savedDifficulty = cur?.difficulty;
             const savedPuzzleId = typeof cur?.puzzleId === "string" ? cur.puzzleId : "";
-            const savedCells = Array.isArray(cur?.cells) && cur.cells.length === 81 ? (cur.cells as Cell[]) : null;
-            const savedElapsed = Number.isFinite(cur?.elapsedSec) ? Math.max(0, Math.floor(cur.elapsedSec)) : null;
+            const savedGrid = typeof cur?.puzzleGrid === "string" ? cur.puzzleGrid : "";
+            const savedElapsed = Number(cur?.elapsedSec ?? 0) || 0;
+            const savedCells = Array.isArray(cur?.cells) ? (cur.cells as Cell[]) : null;
 
-            if (savedPuzzleId && savedCells) {
-              setDifficulty(
-                savedDifficulty && (savedDifficulty === "easy" || savedDifficulty === "medium" || savedDifficulty === "hard")
-                  ? savedDifficulty
-                  : s.defaultDifficulty
-              );
+            const canUse =
+              isDifficulty(savedDifficulty) &&
+              savedPuzzleId &&
+              savedCells &&
+              savedCells.length === 81;
+
+            if (canUse) {
+              setDifficulty(savedDifficulty);
               setPuzzleId(savedPuzzleId);
+              setPuzzleGrid(savedGrid || gridFromGivenCells(savedCells));
               setCells(savedCells);
               setSelected(0);
               setMemoMode(false);
-              setElapsedSec(savedElapsed ?? 0);
+              setElapsedSec(savedElapsed);
               setUndoStack([{ cells: deepCopyCells(savedCells) }]);
               setRedoStack([]);
               solvedAwardedRef.current = false;
               setLastSolvedScore(0);
 
-              // 복원 직후에는 자동 새 퍼즐 생성(difficulty effect)을 1회 건너뛰기
-              skipNextNewPuzzleRef.current = true;
-            } else {
-              setDifficulty(s.defaultDifficulty);
+              // URL도 현재 퍼즐로 맞춰두기(공유용)
+              if (savedGrid) {
+                setUrlShare(savedGrid, savedDifficulty);
+              }
+              skipNextNewPuzzleRef.current = true; // difficulty effect 1회 스킵
+              return;
             }
-          } else {
-            setDifficulty(s.defaultDifficulty);
           }
-        } else {
-          setDifficulty(s.defaultDifficulty);
         }
-      } catch {
-        setDifficulty(s.defaultDifficulty);
-      }
-    } else {
-      setDifficulty(s.defaultDifficulty);
+      } catch {}
     }
+
+    // ✅ 기본: 설정 난이도로 새 퍼즐 시작
+    startNewPuzzle(s.defaultDifficulty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -457,7 +493,7 @@ export default function Page() {
         localStorage.setItem(soloProgressKey, JSON.stringify({ puzzleId, elapsedSec, cells }));
       } catch {}
       try {
-        localStorage.setItem(SOLO_CURRENT_KEY, JSON.stringify({ difficulty, puzzleId, elapsedSec, cells }));
+        localStorage.setItem(SOLO_CURRENT_KEY, JSON.stringify({ difficulty, puzzleId, puzzleGrid, elapsedSec, cells }));
       } catch {}
     }, 200);
 
@@ -469,23 +505,44 @@ export default function Page() {
     setRedoStack([]);
   }
 
-  function startNewPuzzle(d: Difficulty, forcedPuzzleId?: string) {
+  function startNewPuzzle(
+    d: Difficulty,
+    opts?: { forcedPuzzleId?: string; forcedGrid?: string; forcedDifficulty?: Difficulty }
+  ) {
     stopSoloTimer();
 
-    // ✅ 공유 링크로 들어온 경우: 번들 퍼즐 id로 로드
     let p: Puzzle | null = null;
-    if (forcedPuzzleId) {
-      p = findBundledPuzzleById(forcedPuzzleId);
+
+    // ✅ 공유 링크로 들어온 경우: grid 우선 로드 (무한 생성 퍼즐도 동일하게 공유 가능)
+    if (opts?.forcedGrid) {
+      const fd = opts.forcedDifficulty && isDifficulty(opts.forcedDifficulty) ? opts.forcedDifficulty : d;
+      p = {
+        id: stablePuzzleId(fd, opts.forcedGrid),
+        difficulty: fd,
+        grid: opts.forcedGrid,
+        // solution은 클라이언트에서 사용하지 않지만 타입을 맞추기 위해 채움
+        solution: "0".repeat(81),
+      };
+    } else if (opts?.forcedPuzzleId) {
+      // ✅ 레거시 공유 링크(?puzzle=...) 지원
+      p = findBundledPuzzleById(opts.forcedPuzzleId);
     }
 
-    // ✅ 기본: 번들 퍼즐에서 랜덤 선택 (공유 가능한 퍼즐만 사용)
+    // ✅ 기본: 난이도에 맞게 무한 랜덤 생성(실패 시 번들로 자동 fallback)
     if (!p) {
-      p = pickBundledPuzzle(d);
+      p = pickPuzzle(d);
     }
 
-    const init = puzzleToCells(p);
-    setDifficulty((p.difficulty === "easy" || p.difficulty === "medium" || p.difficulty === "hard") ? p.difficulty : d);
-    setPuzzleId(p.id);
+    const diff = (p.difficulty as Difficulty) ?? d;
+    const grid = p.grid;
+    const pid = stablePuzzleId(diff, grid);
+
+    const init = puzzleToCells({ ...p, id: pid, difficulty: diff });
+
+    setDifficulty(diff);
+    setPuzzleId(pid);
+    setPuzzleGrid(grid);
+
     setCells(init);
     setSelected(0);
     setMemoMode(false);
@@ -496,9 +553,9 @@ export default function Page() {
     solvedAwardedRef.current = false;
     setLastSolvedScore(0);
 
-    // ✅ 현재 퍼즐 id를 URL에 반영 (같은 문제 공유용)
+    // ✅ 현재 퍼즐을 URL에 반영 (같은 문제 공유용)
     if (typeof window !== "undefined") {
-      setUrlPuzzle(p.id);
+      setUrlShare(grid, diff);
     }
   }
 
@@ -736,9 +793,13 @@ export default function Page() {
 
   const shareUrl = useMemo(() => {
     if (typeof window === "undefined") return "";
+    if (!puzzleGrid || puzzleGrid.length !== 81) return "";
     const base = `${window.location.origin}${window.location.pathname}`;
-    return `${base}?puzzle=${encodeURIComponent(puzzleId)}`;
-  }, [puzzleId]);
+    const params = new URLSearchParams();
+    params.set("d", difficulty);
+    params.set("g", puzzleGrid);
+    return `${base}?${params.toString()}`;
+  }, [difficulty, puzzleGrid]);
 
   const canNativeShare = typeof navigator !== "undefined" && !!(navigator as any).share;
 
