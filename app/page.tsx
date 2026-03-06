@@ -235,6 +235,7 @@ export default function Page() {
 
   const soloProgressKey = useMemo(() => (puzzleId ? `sudoku_solo_progress_${puzzleId}` : ""), [puzzleId]);
   const skipNextNewPuzzleRef = useRef(false);
+  const isBootingRef = useRef(true);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rankOpen, setRankOpen] = useState(false);
@@ -484,6 +485,10 @@ export default function Page() {
   useEffect(() => {
     if (skipNextNewPuzzleRef.current) {
       skipNextNewPuzzleRef.current = false;
+      return;
+    }
+    if (isBootingRef.current) {
+      isBootingRef.current = false;
       return;
     }
     startNewPuzzle(difficulty);
