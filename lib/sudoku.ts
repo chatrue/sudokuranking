@@ -153,35 +153,47 @@ export function gridMatchesSolution(grid: string, solution: string): boolean {
   return true;
 }
 
+function seededFallbackIndex(seed: number, len: number): number {
+  if (len <= 0) return 0;
+  const u = (Math.floor(seed) >>> 0) || 1;
+  return u % len;
+}
+
 export function pickPuzzle(
   difficulty: Puzzle["difficulty"],
   excludeIds: string[] = [],
   seed?: number
 ): Puzzle {
-  // Prefer random-generated puzzles (not transformations)
-  for (let tries = 0; tries < 25; tries++) {
-    const gen = generateSudoku(difficulty, seed);
-    const id = typeof gen.seed === "number" ? `seed-${difficulty}-${gen.seed}` : `gen-${difficulty}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    if (!isSolutionValid(gen.solution)) continue;
-    if (!isGridValid(gen.grid)) continue;
-    if (!gridMatchesSolution(gen.grid, gen.solution)) continue;
-    // id is unique enough; excludeIds not needed but keep for API symmetry
-    if (excludeIds.includes(id)) continue;
-    return { id, difficulty, grid: gen.grid, solution: gen.solution, seed: gen.seed };
-  }
-
-  // Fallback to bundled puzzles
   const poolAll = PUZZLES.filter((p) => p.difficulty === difficulty);
   const pool = poolAll.filter((p) => !excludeIds.includes(p.id));
   const basePool = pool.length ? pool : poolAll;
-  const chosen = basePool[Math.floor(Math.random() * basePool.length)] ?? PUZZLES[0];
 
-  for (let tries = 0; tries < Math.min(30, basePool.length); tries++) {
-    const p = basePool[(tries + Math.floor(Math.random() * basePool.length)) % basePool.length] ?? chosen;
-    if (isSolutionValid(p.solution) && isGridValid(p.grid) && gridMatchesSolution(p.grid, p.solution)) return p;
+  // ✅ Seed가 있으면 반드시 같은 퍼즐이 나오도록 한 번만 생성하고,
+  // 실패 시에도 seed 기반으로 동일한 번들 퍼즐로 fallback.
+  if (typeof seed === "number" && Number.isFinite(seed)) {
+    const gen = generateSudoku(difficulty, seed);
+    const id = `seed-${difficulty}-${gen.seed}`;
+    if (isSolutionValid(gen.solution) && isGridValid(gen.grid) && gridMatchesSolution(gen.grid, gen.solution) && !excludeIds.includes(id)) {
+      return { id, difficulty, grid: gen.grid, solution: gen.solution, seed: gen.seed };
+    }
+
+    const fallback = basePool[seededFallbackIndex(gen.seed, basePool.length)] ?? PUZZLES[0];
+    return { ...fallback, difficulty, seed: gen.seed };
   }
 
-  return chosen;
+  // ✅ 일반 플레이는 난수 seed를 새로 뽑아 무한 생성.
+  for (let tries = 0; tries < 12; tries++) {
+    const gen = generateSudoku(difficulty);
+    const id = `seed-${difficulty}-${gen.seed}`;
+    if (excludeIds.includes(id)) continue;
+    if (isSolutionValid(gen.solution) && isGridValid(gen.grid) && gridMatchesSolution(gen.grid, gen.solution)) {
+      return { id, difficulty, grid: gen.grid, solution: gen.solution, seed: gen.seed };
+    }
+  }
+
+  // ✅ 최종 fallback도 번들 퍼즐로 안전하게 처리.
+  const fallback = basePool[Math.floor(Math.random() * Math.max(1, basePool.length))] ?? PUZZLES[0];
+  return fallback;
 }
 
 
